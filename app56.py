@@ -7,7 +7,7 @@ import base64
 from io import BytesIO
 
 # Load Model & Scaler
-with open("xgboost_heart_disease.pkl", "rb") as f:
+with open("xgboost_heart_disease (1).pkl", "rb") as f:
     model = pickle.load(f)
 
 with open("scaler.pkl", "rb") as f:
