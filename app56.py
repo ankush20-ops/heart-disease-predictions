@@ -1,130 +1,88 @@
+# ✅ Install necessary libraries
 import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
 import pickle
 import shap
-import base64
-from io import BytesIO
+import xgboost as xgb
 
-# Load Model & Scaler
-with open("xgboost_heart_disease (1).pkl", "rb") as f:
-    model = pickle.load(f)
+# ✅ Load trained model & scaler
+try:
+    with open("xgboost_heart_disease (1).pkl", "rb") as f:
+        model = pickle.load(f)
+    with open("scaler.pkl", "rb") as f:
+        scaler = pickle.load(f)
+except FileNotFoundError:
+    st.error("❌ Model or Scaler Not Found! Ensure 'xgboost_heart_disease.pkl' and 'scaler.pkl' exist.")
+    st.stop()
 
-with open("scaler.pkl", "rb") as f:
-    scaler = pickle.load(f)
+# ✅ Define required features for prediction
+required_features = [
+    "Age", "Gender", "Systolic_BP", "Diastolic_BP", "Cholesterol",
+    "Glucose", "Smoker", "Alcohol", "Physical_Activity", "BMI",
+    "BP_Diff", "Pulse_Pressure", "Heart_Rate_Ratio", "BP_Variation"
+]
 
-# Streamlit UI
-st.set_page_config(page_title="AI Heart Disease Prediction", layout="wide")
+# ✅ Streamlit App UI
+st.title("🔍 AI-Powered Heart Disease Prediction System")
+st.sidebar.header("📋 Enter Patient Details")
 
-# Custom Styling
-st.markdown(
-    """
-    <style>
-    body {background-color: #f8f9fa;}
-    .main {background-color: white; padding: 20px; border-radius: 10px;}
-    h1 {color: #dc3545;}
-    </style>
-    """, unsafe_allow_html=True
-)
+# 📌 **User Input Fields**
+age = st.sidebar.number_input("Age", min_value=18, max_value=100, value=40, step=1)
+gender = st.sidebar.radio("Gender", ["Male", "Female"])
+systolic_bp = st.sidebar.number_input("Systolic BP (ap_hi)", min_value=80, max_value=200, value=120, step=1)
+diastolic_bp = st.sidebar.number_input("Diastolic BP (ap_lo)", min_value=50, max_value=130, value=80, step=1)
+cholesterol = st.sidebar.selectbox("Cholesterol Level", [1, 2, 3])  # 1: Normal, 2: Above Normal, 3: High
+glucose = st.sidebar.selectbox("Glucose Level", [1, 2, 3])  # 1: Normal, 2: Above Normal, 3: High
+smoker = st.sidebar.radio("Smoker?", ["No", "Yes"])
+alcohol = st.sidebar.radio("Alcohol Consumption?", ["No", "Yes"])
+physical_activity = st.sidebar.radio("Physically Active?", ["No", "Yes"])
+height = st.sidebar.number_input("Height (cm)", min_value=100, max_value=250, value=170, step=1)
+weight = st.sidebar.number_input("Weight (kg)", min_value=30, max_value=200, value=70, step=1)
 
-st.title("💖 AI-Powered Heart Disease Prediction")
+# ✅ Convert Inputs to DataFrame
+input_data = pd.DataFrame({
+    "Age": [age],
+    "Gender": [1 if gender == "Male" else 0],
+    "Systolic_BP": [systolic_bp],
+    "Diastolic_BP": [diastolic_bp],
+    "Cholesterol": [cholesterol],
+    "Glucose": [glucose],
+    "Smoker": [1 if smoker == "Yes" else 0],
+    "Alcohol": [1 if alcohol == "Yes" else 0],
+    "Physical_Activity": [1 if physical_activity == "Yes" else 0],
+    "BMI": [weight / ((height / 100) ** 2)],
+    "BP_Diff": [systolic_bp - diastolic_bp],
+    "Pulse_Pressure": [systolic_bp - diastolic_bp],
+    "Heart_Rate_Ratio": [systolic_bp / diastolic_bp],
+    "BP_Variation": [(systolic_bp - diastolic_bp) / diastolic_bp]
+})
 
-# Input Features
-col1, col2 = st.columns(2)
+# ✅ Ensure input_data has all required columns
+input_data = input_data.reindex(columns=required_features, fill_value=0)
 
-with col1:
-    age = st.slider("Age", 20, 90, 50)
-    gender = st.radio("Gender", ["Male", "Female"])
-    systolic_bp = st.slider("Systolic BP", 80, 200, 120)
-    diastolic_bp = st.slider("Diastolic BP", 50, 130, 80)
-    cholesterol = st.selectbox("Cholesterol Level", sorted(["Normal", "Above Normal", "High"]))
+# ✅ Prediction Logic
+if st.button("🔍 Predict"):
+    try:
+        # ✅ Scale input data
+        input_data_scaled = scaler.transform(input_data)
 
-with col2:
-    glucose = st.selectbox("Glucose Level", sorted(["Normal", "Above Normal", "High"]))
-    smoker = st.radio("Do you smoke?", ["No", "Yes"])
-    alcohol = st.radio("Do you consume alcohol?", ["No", "Yes"])
-    physical_activity = st.radio("Are you physically active?", ["No", "Yes"])
-    height = st.slider("Height (cm)", 140, 200, 170)
-    weight = st.slider("Weight (kg)", 40, 150, 70)
+        # ✅ Make prediction
+        prediction = model.predict(input_data_scaled)[0]
+        prediction_proba = model.predict_proba(input_data_scaled)[:, 1][0] * 100
 
-# Convert categorical inputs to numeric values
-gender = 1 if gender == "Male" else 0
-cholesterol = {"Normal": 1, "Above Normal": 2, "High": 3}[cholesterol]
-glucose = {"Normal": 1, "Above Normal": 2, "High": 3}[glucose]
-smoker = 1 if smoker == "Yes" else 0
-alcohol = 1 if alcohol == "Yes" else 0
-physical_activity = 1 if physical_activity == "Yes" else 0
+        # ✅ Display results
+        if prediction == 1:
+            st.error(f"⚠️ High Risk of Heart Disease ({prediction_proba:.2f}%)")
+        else:
+            st.success(f"✅ Low Risk of Heart Disease ({prediction_proba:.2f}%)")
 
-# Feature Engineering
-bmi = weight / ((height / 100) ** 2)
-bp_ratio = systolic_bp / diastolic_bp
+        # ✅ SHAP Explanation
+        explainer = shap.Explainer(model)
+        shap_values = explainer(input_data_scaled)
+        st.subheader("🔍 Feature Importance")
+        st.write("Higher values indicate stronger influence on heart disease risk.")
+        st.pyplot(shap.force_plot(explainer.expected_value, shap_values.values, input_data, matplotlib=True))
 
-# Create Feature DataFrame
-input_data = pd.DataFrame([[age, gender, systolic_bp, diastolic_bp, cholesterol, glucose, smoker, alcohol, physical_activity, bmi, bp_ratio]],
-                          columns=["Age", "Gender", "Systolic_BP", "Diastolic_BP", "Cholesterol", "Glucose", "Smoker", "Alcohol", "Physical_Activity", "BMI", "BP_Ratio"])
-
-# Scale Data
-input_data_scaled = scaler.transform(input_data)
-
-# Predict
-prediction = model.predict(input_data_scaled)[0]
-prediction_proba = model.predict_proba(input_data_scaled)[:, 1][0]
-
-# Show Results
-st.subheader("🩺 Prediction Result")
-if prediction == 1:
-    st.error(f"⚠️ High Risk of Heart Disease Detected! (Risk: {prediction_proba:.2%})")
-    disease_name = "Possible Cardiovascular Disease"
-    st.write(f"📝 **Detected Disease:** {disease_name}")
-else:
-    st.success(f"✅ No Immediate Heart Disease Risk Detected! (Risk: {prediction_proba:.2%})")
-
-# SHAP Explanation
-st.subheader("🔍 Model Explainability (SHAP Analysis)")
-explainer = shap.Explainer(model)
-shap_values = explainer(input_data_scaled)
-st.pyplot(shap.plots.waterfall(shap_values[0]))
-
-# PDF Report Generation
-def generate_pdf_report():
-    from fpdf import FPDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, "Heart Disease Prediction Report", ln=True, align="C")
-
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(200, 10, f"Prediction: {'High Risk' if prediction == 1 else 'Low Risk'}", ln=True)
-    pdf.cell(200, 10, f"Risk Probability: {prediction_proba:.2%}", ln=True)
-
-    pdf.cell(200, 10, "Feature Inputs:", ln=True)
-    for col, val in zip(input_data.columns, input_data.values[0]):
-        pdf.cell(200, 10, f"{col}: {val}", ln=True)
-
-    pdf.output("Heart_Disease_Report.pdf")
-    return "Heart_Disease_Report.pdf"
-
-if st.button("📥 Download Report"):
-    report_path = generate_pdf_report()
-    with open(report_path, "rb") as file:
-        b64 = base64.b64encode(file.read()).decode()
-    href = f'<a href="data:file/pdf;base64,{b64}" download="Heart_Disease_Report.pdf">Click Here to Download Report</a>'
-    st.markdown(href, unsafe_allow_html=True)
-
-# File Upload for Batch Prediction
-st.subheader("📤 Upload Patient Data (CSV/PDF)")
-uploaded_file = st.file_uploader("Upload a patient dataset for automatic predictions", type=["csv", "pdf"])
-
-if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-        df_scaled = scaler.transform(df)
-        predictions = model.predict(df_scaled)
-        df["Prediction"] = predictions
-        st.write(df)
-        st.download_button("📥 Download Predictions", df.to_csv(index=False), file_name="Predictions.csv", mime="text/csv")
-    else:
-        st.warning("PDF Processing Coming Soon!")
-
-# Footer
-st.markdown("Developed by **Ankush** with ❤️")
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
