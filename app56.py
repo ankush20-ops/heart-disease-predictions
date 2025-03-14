@@ -1,88 +1,117 @@
-# ✅ Install necessary libraries
 import streamlit as st
-import numpy as np
 import pandas as pd
+import numpy as np
 import pickle
 import shap
-import xgboost as xgb
+import base64
+import os
+from io import BytesIO
+from sklearn.preprocessing import StandardScaler
 
-# ✅ Load trained model & scaler
-try:
-    with open("xgboost_heart_disease (1).pkl", "rb") as f:
-        model = pickle.load(f)
-    with open("scaler.pkl", "rb") as f:
-        scaler = pickle.load(f)
-except FileNotFoundError:
-    st.error("❌ Model or Scaler Not Found! Ensure 'xgboost_heart_disease.pkl' and 'scaler.pkl' exist.")
-    st.stop()
+# Load Model & Scaler
+MODEL_PATH = "xgboost_heart_disease.pkl"
+SCALER_PATH = "scaler.pkl"
 
-# ✅ Define required features for prediction
-required_features = [
-    "Age", "Gender", "Systolic_BP", "Diastolic_BP", "Cholesterol",
-    "Glucose", "Smoker", "Alcohol", "Physical_Activity", "BMI",
-    "BP_Diff", "Pulse_Pressure", "Heart_Rate_Ratio", "BP_Variation"
-]
+# Load trained model and scaler
+with open(MODEL_PATH, "rb") as f:
+    model = pickle.load(f)
+    
+with open(SCALER_PATH, "rb") as f:
+    scaler = pickle.load(f)
 
-# ✅ Streamlit App UI
-st.title("🔍 AI-Powered Heart Disease Prediction System")
-st.sidebar.header("📋 Enter Patient Details")
+# Expected Features (Ensuring consistency)
+EXPECTED_FEATURES = ['Age', 'Gender', 'Systolic_BP', 'Diastolic_BP', 'Cholesterol', 'Glucose',
+                     'Smoker', 'Alcohol', 'Physical_Activity', 'BMI', 'BP_Ratio']
 
-# 📌 **User Input Fields**
-age = st.sidebar.number_input("Age", min_value=18, max_value=100, value=40, step=1)
+# Heart Disease Types
+HEART_DISEASE_TYPES = {
+    0: "No Heart Disease",
+    1: "Possible Cardiovascular Disease"
+}
+
+# Function to predict heart disease
+def predict_heart_disease(input_data):
+    input_data_scaled = scaler.transform([input_data])
+    prediction = model.predict(input_data_scaled)[0]
+    return prediction, HEART_DISEASE_TYPES[prediction]
+
+# Function to generate SHAP explanation
+def generate_shap_explanation(input_data):
+    explainer = shap.Explainer(model)
+    shap_values = explainer(input_data)
+    return shap_values
+
+# Function to process PDF and predict automatically
+def process_pdf(file):
+    # Implement PDF extraction logic (For now, dummy extraction)
+    extracted_data = {
+        "Age": 50, "Gender": 1, "Systolic_BP": 140, "Diastolic_BP": 90, "Cholesterol": 2,
+        "Glucose": 1, "Smoker": 0, "Alcohol": 0, "Physical_Activity": 1,
+        "BMI": 27.5, "BP_Ratio": 1.56
+    }
+    return pd.DataFrame([extracted_data])
+
+# Function to download report
+def generate_pdf_report(input_data, prediction):
+    buffer = BytesIO()
+    with open("report.txt", "w") as f:
+        f.write(f"Heart Disease Prediction Report\n\n")
+        for key, value in input_data.items():
+            f.write(f"{key}: {value}\n")
+        f.write(f"\nPrediction: {prediction}")
+    with open("report.txt", "rb") as f:
+        buffer.write(f.read())
+    buffer.seek(0)
+    return buffer
+
+# Streamlit UI
+st.set_page_config(page_title="AI Heart Disease Predictor", layout="wide")
+st.markdown("<h1 style='text-align: center; color: red;'>❤️ AI Heart Disease Prediction System</h1>", unsafe_allow_html=True)
+
+# Sidebar
+st.sidebar.header("User Input Features")
+age = st.sidebar.slider("Age", 20, 90, 50)
 gender = st.sidebar.radio("Gender", ["Male", "Female"])
-systolic_bp = st.sidebar.number_input("Systolic BP (ap_hi)", min_value=80, max_value=200, value=120, step=1)
-diastolic_bp = st.sidebar.number_input("Diastolic BP (ap_lo)", min_value=50, max_value=130, value=80, step=1)
-cholesterol = st.sidebar.selectbox("Cholesterol Level", [1, 2, 3])  # 1: Normal, 2: Above Normal, 3: High
-glucose = st.sidebar.selectbox("Glucose Level", [1, 2, 3])  # 1: Normal, 2: Above Normal, 3: High
-smoker = st.sidebar.radio("Smoker?", ["No", "Yes"])
-alcohol = st.sidebar.radio("Alcohol Consumption?", ["No", "Yes"])
-physical_activity = st.sidebar.radio("Physically Active?", ["No", "Yes"])
-height = st.sidebar.number_input("Height (cm)", min_value=100, max_value=250, value=170, step=1)
-weight = st.sidebar.number_input("Weight (kg)", min_value=30, max_value=200, value=70, step=1)
+systolic_bp = st.sidebar.slider("Systolic BP", 80, 200, 120)
+diastolic_bp = st.sidebar.slider("Diastolic BP", 50, 130, 80)
+cholesterol = st.sidebar.selectbox("Cholesterol", sorted([1, 2, 3]))
+glucose = st.sidebar.selectbox("Glucose", sorted([1, 2, 3]))
+smoker = st.sidebar.selectbox("Smoker", sorted([0, 1]))
+alcohol = st.sidebar.selectbox("Alcohol", sorted([0, 1]))
+physical_activity = st.sidebar.selectbox("Physical Activity", sorted([0, 1]))
+height = st.sidebar.number_input("Height (cm)", 100, 220, 170)
+weight = st.sidebar.number_input("Weight (kg)", 30, 200, 70)
 
-# ✅ Convert Inputs to DataFrame
-input_data = pd.DataFrame({
-    "Age": [age],
-    "Gender": [1 if gender == "Male" else 0],
-    "Systolic_BP": [systolic_bp],
-    "Diastolic_BP": [diastolic_bp],
-    "Cholesterol": [cholesterol],
-    "Glucose": [glucose],
-    "Smoker": [1 if smoker == "Yes" else 0],
-    "Alcohol": [1 if alcohol == "Yes" else 0],
-    "Physical_Activity": [1 if physical_activity == "Yes" else 0],
-    "BMI": [weight / ((height / 100) ** 2)],
-    "BP_Diff": [systolic_bp - diastolic_bp],
-    "Pulse_Pressure": [systolic_bp - diastolic_bp],
-    "Heart_Rate_Ratio": [systolic_bp / diastolic_bp],
-    "BP_Variation": [(systolic_bp - diastolic_bp) / diastolic_bp]
-})
+# Feature Engineering
+bmi = weight / ((height / 100) ** 2)
+bp_ratio = systolic_bp / diastolic_bp
 
-# ✅ Ensure input_data has all required columns
-input_data = input_data.reindex(columns=required_features, fill_value=0)
+# Convert categorical values
+gender = 1 if gender == "Male" else 0
 
-# ✅ Prediction Logic
-if st.button("🔍 Predict"):
-    try:
-        # ✅ Scale input data
-        input_data_scaled = scaler.transform(input_data)
+# Organize input data
+input_data = [age, gender, systolic_bp, diastolic_bp, cholesterol, glucose,
+              smoker, alcohol, physical_activity, bmi, bp_ratio]
 
-        # ✅ Make prediction
-        prediction = model.predict(input_data_scaled)[0]
-        prediction_proba = model.predict_proba(input_data_scaled)[:, 1][0] * 100
+# Prediction Button
+if st.sidebar.button("Predict"):
+    prediction, disease_name = predict_heart_disease(input_data)
+    st.success(f"Prediction: {disease_name}")
 
-        # ✅ Display results
-        if prediction == 1:
-            st.error(f"⚠️ High Risk of Heart Disease ({prediction_proba:.2f}%)")
-        else:
-            st.success(f"✅ Low Risk of Heart Disease ({prediction_proba:.2f}%)")
+    # SHAP Explanation
+    st.subheader("Feature Importance (SHAP Values)")
+    shap_values = generate_shap_explanation(np.array(input_data).reshape(1, -1))
+    shap.initjs()
+    st.write(shap.force_plot(shap_values))
 
-        # ✅ SHAP Explanation
-        explainer = shap.Explainer(model)
-        shap_values = explainer(input_data_scaled)
-        st.subheader("🔍 Feature Importance")
-        st.write("Higher values indicate stronger influence on heart disease risk.")
-        st.pyplot(shap.force_plot(explainer.expected_value, shap_values.values, input_data, matplotlib=True))
+    # Download Report
+    pdf = generate_pdf_report(dict(zip(EXPECTED_FEATURES, input_data)), disease_name)
+    st.download_button("Download Report", pdf, "Heart_Disease_Report.pdf")
 
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+# PDF Upload for Auto-Prediction
+uploaded_file = st.file_uploader("Upload Patient PDF Report", type=["pdf"])
+if uploaded_file:
+    df = process_pdf(uploaded_file)
+    st.dataframe(df)
+    prediction, disease_name = predict_heart_disease(df.iloc[0])
+    st.success(f"Prediction: {disease_name}")
