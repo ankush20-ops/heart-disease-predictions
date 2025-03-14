@@ -9,7 +9,7 @@ from io import BytesIO
 from sklearn.preprocessing import StandardScaler
 
 # Load Model & Scaler
-MODEL_PATH = "xgboost_heart_disease.pkl"
+MODEL_PATH = "xgboost_heart_disease (1).pkl"
 SCALER_PATH = "scaler.pkl"
 
 # Load trained model and scaler
