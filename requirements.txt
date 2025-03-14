@@ -1,0 +1,13 @@
+streamlit
+numpy
+pandas
+matplotlib
+plotly
+scikit-learn
+xgboost
+shap
+pillow
+fpdf
+pymupdf
+PyPDF2
+seaborn
