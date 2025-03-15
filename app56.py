@@ -3,8 +3,6 @@ import pandas as pd
 import numpy as np
 import pickle
 import shap
-import base64
-import os
 from io import BytesIO
 from sklearn.preprocessing import StandardScaler
 
@@ -19,10 +17,10 @@ with open(MODEL_PATH, "rb") as f:
 with open(SCALER_PATH, "rb") as f:
     scaler = pickle.load(f)
 
-# ✅ Expected Features (12 Features for Model)
-EXPECTED_FEATURES = ['Age', 'Gender', 'Systolic_BP', 'Diastolic_BP', 'Cholesterol',
-                     'Glucose', 'Smoker', 'Alcohol', 'Physical_Activity', 'BMI',
-                     'Pulse_Pressure', 'BP_Variation']
+# ✅ Expected Features (14 Features for Model)
+EXPECTED_FEATURES = ['Age', 'Gender', 'Systolic_BP', 'Diastolic_BP', 'Cholesterol', 'Glucose',
+                     'Smoker', 'Alcohol', 'Physical_Activity', 'BMI', 'BP_Diff', 
+                     'Pulse_Pressure', 'Heart_Rate_Ratio', 'BP_Variation']
 
 # ✅ Disease Types
 HEART_DISEASE_TYPES = {
@@ -48,7 +46,8 @@ def process_pdf(file):
     extracted_data = {
         "Age": 50, "Gender": 1, "Systolic_BP": 140, "Diastolic_BP": 90, "Cholesterol": 2,
         "Glucose": 1, "Smoker": 0, "Alcohol": 0, "Physical_Activity": 1,
-        "BMI": 27.5, "Pulse_Pressure": 50, "BP_Variation": 0.5
+        "BMI": 27.5, "BP_Diff": 50, "Pulse_Pressure": 50,
+        "Heart_Rate_Ratio": 1.56, "BP_Variation": 0.5
     }
     return pd.DataFrame([extracted_data])
 
@@ -109,7 +108,9 @@ weight = st.sidebar.number_input("Weight (kg)", 30, 200, 70)
 
 # **Feature Engineering**
 bmi = weight / ((height / 100) ** 2)
+bp_diff = systolic_bp - diastolic_bp
 pulse_pressure = systolic_bp - diastolic_bp
+heart_rate_ratio = systolic_bp / diastolic_bp
 bp_variation = (systolic_bp - diastolic_bp) / diastolic_bp
 
 # **Convert to Numeric Values**
@@ -117,7 +118,8 @@ gender = 1 if gender == "Male" else 0
 
 # **Create Input Data**
 input_data = [age, gender, systolic_bp, diastolic_bp, cholesterol, glucose,
-              smoker, alcohol, physical_activity, bmi, pulse_pressure, bp_variation]
+              smoker, alcohol, physical_activity, bmi, bp_diff, 
+              pulse_pressure, heart_rate_ratio, bp_variation]
 
 # ✅ **Prediction Button**
 if st.sidebar.button("🔍 Predict"):
